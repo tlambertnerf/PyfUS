@@ -5,7 +5,7 @@ import foss4fus.clustering as cl
 import foss4fus.quantification as q
 import matplotlib.pyplot as plt
 import numpy as np
-import pickle, foss4fus
+
 
 ################################################################################
 #                           DATASET SELECTION
@@ -110,7 +110,7 @@ custom_cmap = [[0.4, 0.8, 0.2, 1.], [1., 0.6, 0., 1.], [1., 0., 0.8, 1.], [0., 0
 svc.change_cmap(custom_cmap)
 
 ### Methods for displaying the results of the clustering process
-svc.plot_signals(display='mean_std')
+svc.plot_signals(display='mean_std', scale=[-0.1,0.2])
 svc.display_cluster_locations()
 plt.show()
 
