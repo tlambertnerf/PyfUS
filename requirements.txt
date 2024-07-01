@@ -9,3 +9,4 @@ seaborn==0.12.2
 Pillow==9.3.0
 nibabel==5.1.0
 openpyxl==3.1.4
+sphinx-rtd-theme
