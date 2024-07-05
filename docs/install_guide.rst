@@ -4,7 +4,7 @@ If you don't have it installed yet, download and install the `Mamba`_ package ma
 
 Open 'Miniforge Prompt' and prompt:
 
-  >>> mamba env create -n foss4fus python=3.9
+  >>> mamba create -n foss4fus python=3.9
 
 You have now a virtual environment up and ready for using the software. Let's install it by running:
 
