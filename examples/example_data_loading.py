@@ -1,5 +1,5 @@
-import foss4fus.data_loading as dl
-import foss4fus.quality_control as qc
+import pyfus.data_loading as dl
+import pyfus.quality_control as qc
 from time import time
 from datetime import timedelta
 
@@ -7,7 +7,7 @@ from datetime import timedelta
 ### HYPERPARAMETERS
 ### Check the doc of the DataLoaderAndPreproc object in the data_loading module to see what each parameter is doing!
 
-root_folder = 'E:/20-foss4fus'
+root_folder = 'E:/20-pyfus'
 experiment_ID = 'example_dataset_gratings'
 
 mode = 'folder_tree'

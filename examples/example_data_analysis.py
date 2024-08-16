@@ -1,8 +1,8 @@
-import foss4fus.utils as u
-import foss4fus.correlation_analysis as correl
-import foss4fus.region_averaging_analysis as region_avg
-import foss4fus.clustering as cl
-import foss4fus.quantification as q
+import pyfus.utils as u
+import pyfus.correlation_analysis as correl
+import pyfus.region_averaging_analysis as region_avg
+import pyfus.clustering as cl
+import pyfus.quantification as q
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -11,7 +11,7 @@ import numpy as np
 #                           DATASET SELECTION
 ################################################################################
 ### Here put the path that resulted from the data loading example
-src = 'E:/20-foss4fus/loaded_data/example_dataset_gratings_median_subject_reg_07b6f81d'
+src = 'E:/20-pyfus/loaded_data/example_dataset_gratings_median_subject_reg_07b6f81d'
 
 ### The list of stims, expgroup, subjects to include in the analysis. Set to None if you want everything to be included.
 stims = ['backward']
@@ -39,7 +39,7 @@ data_paths = u.post_data_loading_iterator(src, expgroup_ID=expgroup_ID, subject_
 ################################################################################
 
 ### Remove/add '#' if you want to skip/open this section
-"""
+#"""
 assert registered == True, "You cannot use region averaging analysis if you did not register your data during data loading."
 raa = region_avg.RegionAveragingAnalysis(data_paths, atlas_path, regions_info_path, regions_to_exclude=regions_to_exclude)
 
@@ -49,22 +49,21 @@ raa.plot_barcode(names=None, separate_plots=True, scale=[-0.1, 0.1])
 raa.plot_region([('SCs', 'LR')], scale=[-0.04, 0.12])
 ### To display all the generated plots
 plt.show()
+
 ### Method for extracting traces from individual regions for further processing
 res = raa.get_regions_traces([('LGd', 'L'), ('SCs', 'L')])
 
 ### Example of temporal quantification
 tq_ravg = q.TemporalQuantification(res, sampling_rate)
 tq_ravg.plot_metric('Peak amplitude')
-
 #"""
-
 
 ################################################################################
 #                                  CORRELATION
 ################################################################################
 
 ### Remove/add '#' if you want to skip/open this section
-"""
+#"""
 
 ### Definition of the parameters for the correl. Check the doc of the CorrelationAnalysis object in the correlation module!
 correlation_pattern = [(20,60)]
@@ -76,7 +75,7 @@ res = ca.process(registered=registered, atlas_path=atlas_path, regions_info_path
 
 ### Example of spatial quantification. Only works if your data has been registered!
 sq_corr = q.SpatialQuantification(res, atlas_path, regions_info_path)
-sq_corr.print_quantification_per_set()
+sq_corr.print_quantification_region('SCs', 'L')
 
 #"""
 

@@ -1,1 +1,1 @@
-recursive-include foss4fus/atlases *
+recursive-include pyfus/atlases *
