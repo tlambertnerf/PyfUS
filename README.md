@@ -3,7 +3,7 @@ PyfUS is a free and open-source software for the analysis of functional ultrasou
 
 ### Installation
 ```
-pip install pyfus
+pip install pyfus_lib
 ```
 
 ### Get started
