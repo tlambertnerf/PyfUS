@@ -8,16 +8,16 @@ import os, sys
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'FOSS4FUS'
+project = 'PyfUS'
 copyright = '2024, Théo Lambert @ Urban Lab, Neuro-Electronics Research Flanders'
 author = 'Theo Lambert'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-sys.path.insert(0, os.path.abspath('../foss4fus/'))
+sys.path.insert(0, os.path.abspath('..'))
 
-extensions = []
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'sphinx.ext.napoleon']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
@@ -27,7 +27,6 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
+#html_theme = 'alabaster'
 html_theme = "sphinx_book_theme"
 html_static_path = ['_static']
-
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'sphinx.ext.napoleon']

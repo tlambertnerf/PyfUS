@@ -1,6 +1,6 @@
 
 
-Welcome to FOSS4FUS's documentation!
+Welcome to PyfUS' documentation!
 ====================================
 
 .. toctree::
