@@ -9,7 +9,7 @@ Open 'Miniforge Prompt' and prompt:
 You have now a virtual environment up and ready for using the software. Let's install it by running:
 
   >>> mamba activate pyfus
-  >>> pip install pyfus
+  >>> pip install pyfus_lib
 
 
 Quickstart
