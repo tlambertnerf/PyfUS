@@ -94,7 +94,7 @@ noise_th = 1.5
 
 svc = cl.SingleVoxelClusteringWrapper(method, n_clusters, data_paths, atlas_path, regions_info_path, fe_method=fe_method, fe_params=fe_params, noise_th=noise_th, registered=registered)
 
-### To uncomment if method = 'brainwide'
+### To uncomment if method = 'volume'
 #svc.process()
 ### To uncomment if method = 'hemisphere'
 svc.process('LR')
