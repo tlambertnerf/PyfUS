@@ -498,9 +498,10 @@ class SingleVoxelClusteringWrapper:
     ----------
     method : str
         Choice of the method, between:
-            - multi_BW: multiple volumes, brainwide clustering
-            - single_BW: single volume, brainwide clustering
-            - multi_region: multiple volumes, clustering on subset of regions
+            - volume: all voxels in the image
+            - hemisphere: all voxels in a given or both hemispheres
+            - structure: all voxels belonging to a list of structures
+            - multiregion: all voxels belonging to a list of regions
     n_clusters : int
         Number of clusters to search for.
     filelist : list of string
