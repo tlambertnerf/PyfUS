@@ -76,7 +76,6 @@ res = ca.process(registered=registered, atlas_path=atlas_path, regions_info_path
 ### Example of spatial quantification. Only works if your data has been registered!
 sq_corr = q.SpatialQuantification(res, atlas_path, regions_info_path)
 sq_corr.print_quantification_region('SCs', 'L')
-
 #"""
 
 ################################################################################
