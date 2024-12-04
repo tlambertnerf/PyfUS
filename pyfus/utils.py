@@ -7,9 +7,10 @@ This module regroups all the utility functions of generic use.
 
 import numpy as np
 import pandas as pd
-import sys, time, os, typing
+import sys, time, os, typing, pickle
 import matplotlib.pyplot as plt
 import pkg_resources
+import pyfus.global_variables as gv
 from sklearn.decomposition import FastICA
 from typing import Union, List
 from importlib.resources import files
@@ -478,8 +479,21 @@ def generate_color_coded_atlas_flat(
     cmap = None
     ):
 
-    groups = np.array(['CB', 'CTXsp', 'HPF', 'HY', 'Isocortex', 'MB', 'MY', 'OLF', 'P', 'PAL', 'STR', 'TH', 'empty'])
-    #groups = np.array(['P', 'MY', 'HY', 'TH', 'MB', 'CB', 'CTXsp', 'HPF', 'Isocortex', 'OLF', 'STR', 'PAL'])
+    """
+    Function for displaying an atlas color-coded depending on the major anatomical structures.
+
+    Parameters
+    ----------
+    atlas_resolution : int
+        The resolution of the atlas to be loaded.
+    ext : str
+        The extension of the atlas to be loaded.
+    cmap : None | list of colors
+        List of colors for the anatomical structures.
+    """
+
+    groups = np.array(gv.MAJOR_STRUCTURES + ['empty'])
+
     if cmap == None:
         cmap = plt.get_cmap('tab20')
         cmap = [cmap(i/len(groups)) for i in range(len(groups))]
@@ -502,7 +516,6 @@ def generate_color_coded_atlas_flat(
 
 
 
-
 class Formatter(object):
 
     """
@@ -519,12 +532,12 @@ class Formatter(object):
     """
 
     def __init__(self, atlas, regions_acr, regions_nb):
-        self.atlas = atlas
+        self.atlas = np.abs(atlas)
         self.regions_acr = regions_acr
         self.regions_nb = regions_nb
 
     def __call__(self, x, y):
-        g = self.regions_acr[self.regions_nb == self.atlas[int(y), int(x)]]
+        g = self.regions_acr[self.regions_nb == int(self.atlas[int(y), int(x)])]
         return(F"{g}")
 
 
@@ -542,7 +555,156 @@ def get_atlas_and_info_paths(atlas_resolution, ext):
         Extension of the atlas to be used.
     """
 
-    path_atlas = files('foss4fus.atlases.atlases_npy').joinpath('atlas_ccf_v3_100_nolayersnoparts.npy')
-    path_atlas_contours = files('foss4fus.atlases.atlases_npy').joinpath('atlas_ccf_v3_100_contours.npy')
-    path_regions_info = files('foss4fus.atlases.atlases_lists').joinpath('regions_ccf_v3_100_nolayersnoparts.txt')
+    path_atlas = files('pyfus.atlases.atlases_npy').joinpath('atlas_ccf_v3_100_nolayersnoparts.npy')
+    path_atlas_contours = files('pyfus.atlases.atlases_npy').joinpath('atlas_ccf_v3_100_contours.npy')
+    path_regions_info = files('pyfus.atlases.atlases_lists').joinpath('regions_ccf_v3_100_nolayersnoparts.txt')
     return(path_atlas, path_atlas_contours, path_regions_info)
+
+
+
+def get_atlas_mask_from_regions(atlas, regions_nb, regions_acr, acr_list):
+
+    """
+    Utility function to get a volume matching the atlas size with ones where voxels belong to the selected regions and zeros elesewhere.
+
+    Parameters
+    ----------
+    atlas : array
+        Resolution of the atlas to use, in µm.
+    regions_acr : array
+        Array containing the acronyms of the regions included in the atlas.
+    regions_nb : array
+        Array containing the regions' numbers / IDs included in the atlas.
+    acr_list : list of tuples
+        List containing the acronyms and associated hemispheres of the selected regions. Ex: [('SCs', 'L'), ('VISp', 'R')].
+    """
+
+    assert type(acr_list) == list
+
+    mask = np.zeros(atlas.shape)
+
+    for acr, h in acr_list:
+        assert len(regions_nb[regions_acr == acr]) != 0, F"Acronym \'{acr}\' is not correct. Please check the atlas."
+        nb = regions_nb[regions_acr == acr][0]
+        h_sign = -1 if h == 'L' else 1
+        mask[atlas == nb*h_sign] = 1
+
+    return(mask.astype('bool'))
+
+
+
+def get_regions_from_groups(
+    group: str,
+    hemisphere: str,
+    regions_acr: np.array,
+    groups_acr: np.array
+    ):
+
+    """
+    Utility function for converting an anatomical group into a list of regions included in that group in the format expected by the clustering code.
+
+    Parameters
+    ----------
+    group : str
+        Acronym of the anatomical group
+    hemisphere : str
+        'L' or 'R' respectively for left and right hemispheres, or 'LR' for both.
+    regions_acr : array
+        1D array containing the regions' acronyms.
+    groups_acr : array
+        1D array containing the anatomical groups' acronyms.
+
+    Returns
+    -------
+    res : list
+        List of tuples in the format (region acronym, hemisphere 'L' or 'R')
+    """
+
+    assert group in gv.MAJOR_STRUCTURES, "The structure you selected does not exist..."
+    assert hemisphere in ['L', 'R', 'LR'], "Hemispheres values should be either 'L' (left), 'R' (right) or 'LR' (both)"
+
+    res = []
+    regions = regions_acr[groups_acr == group]
+
+    if hemisphere == 'LR':
+        for r in regions:
+            res.append((r, 'L'))
+            res.append((r, 'R'))
+    else:
+        for r in regions:
+            res.append((r, hemisphere))
+
+    return(res)
+
+
+
+def get_regions_from_hemisphere(
+    hemisphere: str,
+    regions_acr: np.array,
+    groups_acr: np.array
+    ):
+
+    """
+    Utility function for converting a hemisphere group into a list of regions included in that group in the format expected by the clustering code.
+
+    Parameters
+    ----------
+    group : str
+        Acronym of the anatomical group
+    hemisphere : str
+        'L' or 'R' respectively for left and right hemispheres, or 'LR' for both.
+    regions_acr : array
+        1D array containing the regions' acronyms.
+    groups_acr : array
+        1D array containing the anatomical groups' acronyms.
+
+    Returns
+    -------
+    res : list
+        List of tuples in the format (region acronym, hemisphere 'L' or 'R')
+    """
+
+    assert hemisphere in ['L', 'R', 'LR'], "Hemispheres values should be either 'L' (left), 'R' (right) or 'LR' (both)"
+
+    res = []
+    for g in gv.MAJOR_STRUCTURES:
+        res += get_regions_from_groups(g, hemisphere, regions_acr, groups_acr)
+
+    return(res)
+
+
+
+def save_object(path, obj):
+
+    """
+    Utility function to save an object, for example a clustering object. Rely on pickle.
+
+    Parameters
+    ----------
+    path : string
+        The path where the object should be saved. The extension of the file must be '.p'
+    obj : object
+        The object to be saved.
+    """
+
+    pickle.dump(obj, open(path, 'wb'))
+
+
+
+def load_object(path):
+
+    """
+    Utility function to load an object, for example a clustering object. Rely on pickle.
+
+    Parameters
+    ----------
+    path : string
+        The path where the object is saved.
+
+    Returns
+    -------
+    obj
+        The loaded object.
+    """
+
+    return(pickle.load(open(path, 'rb')))

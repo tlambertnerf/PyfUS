@@ -10,6 +10,7 @@ from time import time
 from pyfus.features_extraction import FeatureExtractor
 from typing import Union, List, Tuple
 from copy import deepcopy
+from scipy.ndimage import median_filter
 
 
 
@@ -107,13 +108,7 @@ def region_loading(
     # format acr_list: [(region_acr, hemisphere)] e.g. [('SCs', 'L')], 'L' = left, 'R' = right
     dataset, coords, file_indices = [], [], []
 
-    mask = np.zeros(atlas.shape)
-    for acr, h in acr_list:
-        assert len(regions_nb[regions_acr == acr]) != 0, F"Acronym \'{acr}\' is not correct. Please check the atlas."
-        nb = regions_nb[regions_acr == acr][0]
-        h_sign = -1 if h == 'L' else 1
-        mask[atlas == nb*h_sign] = 1
-    mask = mask.astype('bool')
+    mask = u.get_atlas_mask_from_regions(atlas, regions_nb, regions_acr, acr_list)
 
     non_zero_coords = np.argwhere(mask==1)
     if regions_centered:
@@ -258,12 +253,50 @@ class SingleVoxelClustering:
         """
 
         self.model = MiniBatchKMeans(n_clusters=self.n_clusters, n_init=50, batch_size=8192)
-        #self.model = AgglomerativeClustering(n_clusters=self.n_clusters, metric='euclidean', linkage='ward')
         data = self.data if self.features is None else self.features
         self.model.fit(np.unique(data, axis=0))
         self.labels = self.model.predict(data)
-        #self.labels = self.model.fit_predict(data)
+
         print("Clustering done. Labels have been predicted.")
+
+
+    def merge_clusters(self, pairs_to_merge, adjust_cmap=True):
+
+        """
+        Utility function for merging clusters together.
+
+        Parameters
+        ----------
+        pairs_to_merge : list of tuple of int
+            List of pair of clusters to be merged. Higher cluster number will be merged to the lower cluster number, ie if cluster 5 and 3 are merged,
+            in the cluster maps 5s will become 3s. Example input: [(5,3), (1,6)].
+        adjust_cmap : bool
+            Whether or not to adjust the colormap to the new number of clusters.
+        """
+
+        label_adjustment = [] # to adjust labels later, eg. cluster 5 becomes cluster 4 if clusters 1 and 2 were merged
+
+        for pair in pairs_to_merge:
+            # cl_src becomes cl_dst
+            if pair[0] > pair[1]:
+                cl_src, cl_dst = pair[0], pair[1]
+            else:
+                cl_src, cl_dst = pair[1], pair[0]
+            cl_src, cl_dst = cl_src-1, cl_dst-1 # in displays clusters are presented from 1 to n_clusters, but encoded in the object in the range (0, n_clusters-1)
+            assert cl_src < self.n_clusters , "You cannot merge a cluster id higher than the total number of clusters."
+
+            self.labels[self.labels == cl_src] = cl_dst
+            label_adjustment.append(cl_src)
+
+        label_adjustment.sort(reverse=True)
+        for cl_src in label_adjustment:
+
+            self.labels[self.labels >= cl_src] -= 1
+
+            if adjust_cmap:
+                self.cmap.pop(cl_src)
+
+        self.n_clusters -= len(label_adjustment)
 
 
     def generate_background_img(self):
@@ -307,6 +340,16 @@ class SingleVoxelClustering:
             yield(cl_id, res_cl)
 
 
+    def reset_cmap(self):
+
+        """
+        Function for reseting the colormap to default values, including when the number of cluster has changed.
+        """
+
+        cm = plt.get_cmap('tab10') if self.n_clusters <= 10 else plt.get_cmap('tab20')
+        self.cmap = [cm(i) for i in range(self.n_clusters)]
+
+
     def change_cmap(self,
         new_cmap: Union[list, str],
         continuous=True
@@ -337,11 +380,28 @@ class SingleVoxelClustering:
                 self.cmap = [cm(i) for i in range(self.n_clusters)]
 
 
+    def switch_colors_in_cmap(self, color_swaps):
+
+        """
+        Utility method for swapping colors in the colormap to adjust the display of the cluster traces.
+
+        Parameters
+        ----------
+        color_swaps : list of tuple of int
+            List containing pairs of colors to be switched.
+        """
+
+        for (c1, c2) in color_swaps:
+            tmp = self.cmap[c1-1]
+            self.cmap[c1-1], self.cmap[c2-1] = self.cmap[c2-1], tmp
+
+
     def plot_signals(self,
         file_idx: Union[int, None] = None,
         display: str = 'all',
         ncols: int = 4,
-        scale: Union[None, Tuple[float, float]] = None
+        scale: Union[None, Tuple[float, float]] = None,
+        stimulation_pattern = None
         ):
 
         """
@@ -359,6 +419,8 @@ class SingleVoxelClustering:
             Number of columns for the display.
         scale : tuple of float | None
             Min and max scales for the display (arguments vmin / vmax from plt.imshow). If None, auto scale will be used.
+        stimulation_pattern : list of tuple of int | None
+            List containing beginnings and ends of stimulation windows.
         """
 
         nrows = int(self.n_clusters / ncols - 1e-5) + 1
@@ -371,9 +433,18 @@ class SingleVoxelClustering:
             m, sd = np.median(signals, 0), np.std(signals, 0)
             x = [i+4 for i in range(len(m))]
 
+            plt.xlim(0, len(m)+4)
+            if scale:
+                plt.ylim(scale[0], scale[1])
+            else:
+                scale = plt.gca().get_ylim()
+
+            if stimulation_pattern:
+                for pattern in stimulation_pattern:
+                    plt.fill_between(range(pattern[0], pattern[1]), scale[0], scale[1], color=[0.8,0.8,0.8,.5])
+
             if display == 'mean_std':
                 plt.fill_between(np.arange(4, len(m)+4), m-sd, m+sd, color=self.cmap[cl_id])
-                print(cl_id, np.mean(np.mean(signals, 1)), np.mean(np.std(signals, 1)))
 
             else:
                 for i, s in enumerate(signals):
@@ -381,9 +452,6 @@ class SingleVoxelClustering:
                         plt.plot(x, s, linewidth=0.2, color=self.cmap[cl_id])
 
             plt.plot(x, m, color='black')
-            plt.xlim(0, len(m)+4)
-            if scale:
-                plt.ylim(scale[0], scale[1])
             #plt.ylim(-1, 3)
 
         #plt.show()
@@ -393,7 +461,7 @@ class SingleVoxelClustering:
         volume: np.ndarray,
         volume_boundaries: np.array = None,
         ncols: int = 8,
-        apply_colormap: bool = True
+        apply_colormap: bool = True,
         ) -> np.ndarray:
 
         """
@@ -436,7 +504,10 @@ class SingleVoxelClustering:
         volume_boundaries: np.array = None,
         plot: bool = True,
         registered: bool = False, #### THIS OPTION HAS NOT BEEN PROPERPLY TESTED
-        atlas_path: Union[None, str] = None
+        atlas_path: Union[None, str] = None,
+        cluster_ids = None,
+        extrema = None,
+        hires_dst = None
         ):
 
         """
@@ -454,6 +525,12 @@ class SingleVoxelClustering:
             If the data was registered during the data loading, set to True to have the atlas info available through the cursor.
         atlas_path : str
             Path to the atlas that the data has been registered to.
+        cluster_ids : list of int | None
+            The list of cluster to be displayed.
+        extrema : tuple
+            Dictionary containing for each cluster the extrema for normalization.
+        hires_dst : str | None
+            If string, path where the hi-res files will be saved. If None, hi-res files won't be generated nor saved.
 
         Returns
         -------
@@ -470,20 +547,72 @@ class SingleVoxelClustering:
         volume = np.zeros(self.data_volume_shape)
 
         for cl_id, coords in coords_iterator:
+            if cluster_ids and cl_id not in cluster_ids:
+                continue
             volume[coords[:,0], coords[:,1], coords[:,2]] = cl_id+1
 
         volume_flat = self.flatten_volume(volume, volume_boundaries)
 
+        if extrema:
+            amplitude_map = self.compute_amplitude_map(file_idx, extrema)
+            amplitude_map[volume == 0] = 0. #to handle when cluster_ids is not None
+            amplitude_map = self.flatten_volume(amplitude_map, volume_boundaries, apply_colormap=False)
+            amplitude_map[amplitude_map < 0] = 0. #to handle when cluster_ids is not None
+            volume_flat[:, :, 3] = amplitude_map
+
+        if hires_dst:
+            f, ax = plt.subplots(figsize=(30,60))
+            ax.set_title(self.names[file_idx])
+            ax.imshow(volume_flat)
+            f.savefig(os.path.join(hires_dst, F"cluster_map_{self.names[file_idx]}.svg"))
+            plt.close(f)
+
         if plot:
             f, ax = plt.subplots()
             ax.set_title(self.names[file_idx])
-            ax.imshow(volume_flat)#, vmin=0, vmax=self.n_clusters+1)
+            ax.imshow(volume_flat)
             if registered ==  True:
-                atlas = np.load(atlas_path) #### TRANSFORM INTO A PARAMETER, NOT HARD PATH
+                atlas = np.load(atlas_path)
                 atlas_flat = self.flatten_volume(atlas, volume_boundaries, apply_colormap=False)
                 ax.format_coord = u.Formatter(atlas_flat, self.regions_acr, self.regions_nb)
 
         return(volume)
+
+
+    def compute_amplitude_map(self,
+        file_idx,
+        extrema
+        ):
+
+        """
+        Method for computing the transparency map based on the normalized amplitude.
+
+        Parameters
+        ----------
+        file_idx : int
+            Index of the file to be displayed.
+        extrema : dict
+            A dictionary containing the extrema for each cluster for the amplitude normalization.
+
+        Returns
+        -------
+        amplitude_map : ndarray
+            The map containing the transparency values.
+        """
+
+        amplitude_map = np.zeros(self.data_volume_shape)
+
+        signals_iterator = iter(self.get_signals_or_coords(output='signals', file_idx=file_idx))
+        coords_iterator = iter(self.get_signals_or_coords(output='coords', file_idx=file_idx))
+
+        for (cl_id, sig), (_, coords) in zip(signals_iterator, coords_iterator):
+
+            normalized_amp = (np.max(np.abs(sig), 1) - extrema[str(cl_id)][0]) / (extrema[str(cl_id)][1] - extrema[str(cl_id)][0])
+            normalized_amp[normalized_amp > 1] = 1
+            normalized_amp[normalized_amp < 0.1] = 0.1
+            amplitude_map[coords[:,0], coords[:,1], coords[:,2]] = normalized_amp
+
+        return(amplitude_map)
 
 
 
@@ -492,7 +621,6 @@ class SingleVoxelClusteringWrapper:
 
     """
     Wrapper to perform the single voxel clustering in various configurations.
-    DEV NOTE: the wrapper was necessary because of h5py data loading.
 
     Parameters
     ----------
@@ -527,7 +655,8 @@ class SingleVoxelClusteringWrapper:
         fe_method: Union[str, None] = None,
         fe_params: dict = {},
         noise_th: float = None,
-        registered: bool = True
+        registered: bool = True,
+        normalization: Union[str, None] = None
         ):
 
         assert method in ['volume', 'structure', 'hemisphere', 'multiregion'], "Unrecognized data selection method: choose between brainwide, structure, hemisphere, multi_region."
@@ -546,6 +675,16 @@ class SingleVoxelClusteringWrapper:
         # necessary to adjust displays and select data
         self.volume_boundaries = None
         self.registered = registered
+
+        self.normalization = normalization
+
+
+    def normalize(self, data):
+
+        if self.normalization == "0-1":
+            data = (data[:,:] - np.min(data, 1)[:, None]) / (np.max(data, 1) - np.min(data, 1))[:, None]
+
+        return(data)
 
 
     def get_regions_from_groups(self,
@@ -603,12 +742,8 @@ class SingleVoxelClusteringWrapper:
 
         elif self.method == 'hemisphere':
 
-            assert acr_list is not None, "No list of acronyms provided"
-            hemi = acr_list
-            assert hemi in ['L', 'R', 'LR'], "Hemispheres values should be either 'L' (left), 'R' (right) or 'LR' (both)"
-            acr_list = []
-            for g in ['P', 'MY', 'HY', 'TH', 'MB', 'CB', 'CTXsp', 'HPF', 'Isocortex', 'OLF', 'STR', 'PAL']:
-                acr_list += self.get_regions_from_groups(g, hemi)
+            assert acr_list in ['L', 'R', 'LR'], "Incorrect input for method 'hemisphere': should be either 'L' (left), 'R' (right) or 'LR' (both)"
+            acr_list = u.get_regions_from_hemisphere(acr_list, self.regions_acr, self.groups_acr)
             data, coords, file_indices, data_volume_shape, self.volume_boundaries = region_loading(self.filelist, acr_list, self.atlas, self.regions_nb, self.regions_acr)
 
         elif self.method == 'structure':
@@ -616,9 +751,7 @@ class SingleVoxelClusteringWrapper:
             assert acr_list is not None, "No list of acronyms provided"
             res = []
             for acr in acr_list:
-                assert acr[0] in ['P', 'MY', 'HY', 'TH', 'MB', 'CB', 'CTXsp', 'HPF', 'Isocortex', 'OLF', 'STR', 'PAL'], "The structure you selected does not exist..."
-                assert acr[1] in ['L', 'R', 'LR'], "Hemispheres values should be either 'L' (left), 'R' (right) or 'LR' (both)"
-                res += self.get_regions_from_groups(acr[0], acr[1])
+                res += u.get_regions_from_groups(acr[0], acr[1], self.regions_acr, self.groups_acr)#self.get_regions_from_groups(acr[0], acr[1])
             data, coords, file_indices, data_volume_shape, self.volume_boundaries = region_loading(self.filelist, res, self.atlas, self.regions_nb, self.regions_acr)
 
         else: # self.method == 'multiregion'
@@ -635,6 +768,9 @@ class SingleVoxelClusteringWrapper:
 
             data, coords, file_indices, data_volume_shape, self.volume_boundaries = region_loading(self.filelist, acr_list_full, self.atlas, self.regions_nb, self.regions_acr)
 
+        if self.normalization:
+            data = self.normalize(data)
+
         self.svc = SingleVoxelClustering(self.n_clusters, data, coords, file_indices, self.names, data_volume_shape, fe_method=self.fe_method, fe_params=self.fe_params, noise_th=self.noise_th)
         self.svc.cluster_dataset()
 
@@ -645,7 +781,20 @@ class SingleVoxelClusteringWrapper:
 
     def get_names(self):
 
+        """
+        Method for printing the names of the data elements in the clustering object.
+        """
+
         print(F"Elements available for display: {self.names}")
+
+
+    def reset_cmap(self):
+
+        """
+        Method for reseting the color map.
+        """
+
+        self.svc.reset_cmap()
 
 
     def change_cmap(self,
@@ -668,9 +817,24 @@ class SingleVoxelClusteringWrapper:
             self.svc.change_cmap(new_cmap=new_cmap, continuous=continuous)
 
 
+    def switch_colors_in_cmap(self, color_swaps):
+
+        """
+        Utility method for swapping colors in the colormap to adjust the display of the cluster traces.
+
+        Parameters
+        ----------
+        color_swaps : list of tuple of int
+            List containing pairs of colors to be switched.
+        """
+
+        self.svc.switch_colors_in_cmap(color_swaps)
+
+
     def plot_signals(self,
         display: str = 'all',
-        scale: Union[None, Tuple[float, float]] = None
+        scale: Union[None, Tuple[float, float]] = None,
+        stimulation_pattern = None
         ):
 
         """
@@ -680,14 +844,57 @@ class SingleVoxelClusteringWrapper:
         ----------
         display : str
             Either 'all' to display all signals or 'mean_std' for mean/std of the signals.
+        scale : tuple of float | None
+            Min and max scales for the display (arguments vmin / vmax from plt.imshow). If None, auto scale will be used.
+        stimulation_pattern : list of tuple of int | None
+            List containing beginnings and ends of stimulation windows.
         """
 
         assert display in ['all', 'mean_std'], "Please set display param to 'all' or 'mean_std'"
-        self.svc.plot_signals(display=display, scale=scale)
+        self.svc.plot_signals(display=display, scale=scale, stimulation_pattern=stimulation_pattern)
+
+
+    def compute_amplitude_extrema(self,
+        quantiles
+        ):
+
+        """
+        Utility function for computing the extrema of each cluster for computing the transparency value associated with parameter 'amplitude_transparency'
+        from method 'display_cluster_locations'.
+        Note: since the extrema are noisy, quantiles are used instead.
+
+        Parameters
+        ----------
+        quantiles : list of float
+            List of size 2 containing the quantiles for the minimum and maximum estimation respectively.
+
+        Returns
+        ----------
+        extrema : dict of tuple
+            Dictionary containing for each cluster the extrema for normalization.
+        """
+
+        assert len(quantiles) == 2, "Parameter 'quantiles' should be of length exactly 2."
+        signals = self.get_signals(reduction=None)
+        extrema = {cl_id: [] for cl_id in signals[next(iter(signals))]}
+
+        for name in self.names:
+            for cl_id in signals[name]:
+                extrema[cl_id].append(signals[name][cl_id])
+
+        for cl_id in extrema:
+            extrema[cl_id] = np.vstack(extrema[cl_id])
+            extrema[cl_id] = np.quantile(np.min(np.abs(extrema[cl_id]), 1), quantiles[0]), np.quantile(np.max(np.abs(extrema[cl_id]), 1), quantiles[1])
+
+        return(extrema)
 
 
     def display_cluster_locations(self,
-        names: Union[list, None] = None
+        names: Union[list, None] = None,
+        amplitude_transparency = False,
+        quantiles = [0.05, 0.95],
+        cluster_ids = None,
+        hires_dst = None
         ):
 
         """
@@ -697,16 +904,30 @@ class SingleVoxelClusteringWrapper:
         ----------
         names : list
             Identifiers of the elements to be displayed.
+        amplitude_transparency : bool
+            Whether or not to modulate the amplitude of the cluster based on the amplitude of the signals. Modulation is cluster specific.
+        quantiles : list of float
+            List of size 2 containing the quantiles for the minimum and maximum estimation respectively. Only used if amplitude transparency is True.
+        cluster_ids : None | list
+            List of the clusters to be displayed. If None, all clusters will be displayed.
+        hires_dst : str | None
+            If string, path where the hi-res files will be saved. If None, hi-res files won't be generated nor saved.
         """
 
         names = self.names if names is None else names
 
-        #self.svc.display_cluster_locations(file_idx, self.volume_boundaries)
+        if amplitude_transparency:
+            extrema = self.compute_amplitude_extrema(quantiles)
+        else:
+            extrema = None
+
+        if cluster_ids: # cluster range in 0 -> n_clusters-1
+            cluster_ids = [cl_id - 1 for cl_id in cluster_ids]
+
         for name in names:
             i = self.names.index(name)
             print(name, i)
-            self.svc.get_cluster_locations(i, self.volume_boundaries, registered=self.registered, plot=True)
-        #plt.show()
+            self.svc.get_cluster_locations(i, self.volume_boundaries, registered=self.registered, plot=True, extrema=extrema, cluster_ids=cluster_ids, hires_dst=hires_dst)
 
 
     def get_signals(self,
@@ -768,7 +989,39 @@ class SingleVoxelClusteringWrapper:
         return(res)
 
 
-    def display_atlas_mask_selected_regions(self, regions_list):
+    def merge_clusters(self,
+        pairs_to_merge,
+        adjust_cmap=True
+        ):
+
+        """
+        Utility function for merging clusters together.
+
+        Parameters
+        ----------
+        pairs_to_merge : list of tuple of int
+            List of pair of clusters to be merged. Higher cluster number will be merged to the lower cluster number, ie if cluster 5 and 3 are merged,
+            in the cluster maps 5s will become 3s. Example input: [(5,3), (1,6)].
+        adjust_cmap : bool
+            Whether or not to adjust the colormap to the new number of clusters.
+        """
+
+        self.svc.merge_clusters(pairs_to_merge, adjust_cmap=adjust_cmap)
+        self.n_clusters = self.svc.n_clusters
+
+
+    def display_atlas_mask_selected_regions(self,
+        regions_list
+        ):
+
+        """
+        Utility function to display on the atlas the list of selected regions.
+
+        Parameters
+        ----------
+        regions_list : list of str
+            List of regions acronyms to be displayed on the atlas.
+        """
 
         cm = plt.get_cmap('jet')
         cm.set_under(color='white')

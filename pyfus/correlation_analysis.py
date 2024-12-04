@@ -158,8 +158,8 @@ class CorrelationAnalysis:
             im = ax1.imshow(corr_map_2D, cmap='jet', vmin=-1.0, vmax=1.0)
             plt.colorbar(mappable=im, ax=ax1)
             ax2.imshow(z_map_2D.astype('int'), cmap='binary', vmin=0, vmax=1)
-            if registered ==  True:
-                atlas = np.load(atlas_path) #### TRANSFORM INTO A PARAMETER, NOT HARD PATH
+            if registered == True:
+                atlas = np.load(atlas_path)
                 atlas_flat = u.reshape_volume_for_display(atlas, volume_boundaries=None)
                 regions_nb, regions_acr, _ = u.extract_info_from_region_file(regions_info_path)
                 ax1.format_coord = u.Formatter(atlas_flat, regions_acr, regions_nb)

@@ -708,16 +708,20 @@ class DataLoaderAndPreproc:
 
         for k, file_path in enumerate(filelist):
 
-            data_mat = loadmat(file_path, squeeze_me=True)
+            try:
+                data_mat = loadmat(file_path, squeeze_me=True, simplify_cells=True)
+            except NotImplementedError: # scipy loadmat does not support 7.3 files
+                data_mat = mat73.loadmat(file_path)
+                #data_mat['I'] = data_mat['I'][:,:,:,::2]
 
             ### data reshaping to get data in the order DV.AP.LR
-            if 'size' in data_mat['md'].dtype.names:
-                size_ = data_mat['md']['size'].tolist()
+            if 'size' in data_mat['md']:
+                size_ = data_mat['md']['size'].astype('int').tolist()
                 size_ = [size_[0], size_[2], size_[1]]
                 data_shape = np.append(size_, data_mat['I'].shape[2])
                 data_fus = data_mat['I'].reshape(data_shape).astype('float32')
             else:
-                size_ = data_mat['md']['imageSize'].tolist()
+                size_ = data_mat['md']['imageSize'].astype('int').tolist()
                 size_ = [size_[i] for i in [0,2,1]]
                 data_fus = np.swapaxes(data_mat['I'], 1, 2).astype('float32')
 
@@ -773,7 +777,7 @@ class DataLoaderAndPreproc:
 
         baseline = np.median(data[..., self.baseline], -1)
         baseline[baseline == 0] = 1
-        data /= baseline[...,np.newaxis]
+        data /= baseline[..., np.newaxis]
         data = (data-1).astype('float16')
 
         return(data)
@@ -821,7 +825,6 @@ class DataLoaderAndPreproc:
                 tmstp = time()
                 data, transf = self.load_data_and_transf(filelist, transf_path, name)
                 n_samples += len(filelist)
-                #print(info, filelist)
 
                 if self.register and transf is None:
 
@@ -835,7 +838,6 @@ class DataLoaderAndPreproc:
                     if self.register:
                         tmstp = time()
                         data = reg.register_data(self.atlas, data, transf, self.atlas_resolution)
-                        #print(F"register_data: {time()-tmstp}s")
 
                         if self.make_reliability_maps:
                             rm.compute_reliability_map(data)
@@ -846,7 +848,6 @@ class DataLoaderAndPreproc:
                     if self.baseline is not None:
                         tmstp = time()
                         data = self.normalize_data(data)
-                        #print(F"normalize: {time()-tmstp}s")
 
                     avg.append(data)
 

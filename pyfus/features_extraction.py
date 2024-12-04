@@ -32,12 +32,12 @@ class FeatureExtractor:
         elif method == 'nmf':
             self.model = NMF(**params)
 
-        elif type(method) == object:
-            assert(callable(getattr(method, 'fit_predict')) or callable(getattr(method, 'predict')))
-            self.model = method(**params)
+        elif hasattr(method, '__dict__'):
+            assert(callable(getattr(method, 'fit_predict', None)) or callable(getattr(method, 'predict', None)))
+            self.model = method(**params) if callable(method) else method
 
         else:
-            raise NameError(F'Method \"{method}\" was not recognized. Please choose between: pca, ica or provide a custom extractor (see doc).')
+            raise NameError(F'Method \"{method}\" was not recognized. Please choose between: pca, ica, nmf or provide a custom extractor (see doc).')
 
 
     def visualize(self, data):
