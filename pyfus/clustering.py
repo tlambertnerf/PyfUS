@@ -1,3 +1,9 @@
+"""
+@author: Théo Lambert
+
+This module regroups all the functions related to single-voxel clustering.
+"""
+
 import numpy as np
 import os, typing, pickle
 import matplotlib.pyplot as plt

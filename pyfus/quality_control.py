@@ -1,3 +1,9 @@
+"""
+@author: Théo Lambert
+
+This module regroups all the functions related to data preprocessing.
+"""
+
 import numpy as np
 import pandas as pd
 import pyfus.utils as u

@@ -1,3 +1,9 @@
+"""
+@author: Théo Lambert
+
+This module regroups all the functions related to spatial and temporal quantification.
+"""
+
 import numpy as np
 import pyfus.utils as u
 import pandas as pd
@@ -34,6 +40,9 @@ class SpatialQuantification:
         atlas_path: str,
         regions_info_path: str
         ):
+
+        pd.set_option('display.max_rows', None)
+        #pd.set_option('display.max_columns', None)
 
         self.atlas = u.load_atlas(atlas_path)
         self.data_dict = data_dict
@@ -346,9 +355,12 @@ def compute_time_to_peak(
     data_t1[:-1], data_t0[1:] = signal, signal
     derivative = (data_t1 - data_t0)
     pos, neg = derivative > 0, derivative < 0
-    inflexion_points = np.argwhere(np.logical_or(pos[:-1]*neg[1:], derivative[:-1]==0)).ravel()
-    arr_inds = signal[inflexion_points].argsort()
-    peak = inflexion_points[arr_inds[::-1]][0]
+    try:
+        inflexion_points = np.argwhere(np.logical_or(pos[:-1]*neg[1:], derivative[:-1]==0)).ravel()
+        arr_inds = signal[inflexion_points].argsort()
+        peak = inflexion_points[arr_inds[::-1]][0]
+    except IndexError:
+        peak = 0
 
     return(peak/sr)
 
@@ -381,8 +393,11 @@ def compute_full_width_half_max(
     above_half_amp = signal > half_amp
     m = np.r_[False, above_half_amp, False]
     idx = np.flatnonzero(m[:-1] != m[1:])
-    fwhm = (idx[1::2]-idx[::2]).max()
-    thm = np.where(above_half_amp == 1)
+    try:
+        fwhm = (idx[1::2]-idx[::2]).max()
+        thm = np.where(above_half_amp == 1)
+    except ValueError:
+        fwhm, thm = 0, [[0]]
 
     return(fwhm/sr, thm[0][0]/sr)
 

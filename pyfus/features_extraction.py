@@ -1,4 +1,11 @@
+"""
+@author: Théo Lambert
+
+This module regroups all the functions related to feature extraction.
+"""
+
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA, FastICA, NMF, TruncatedSVD
 
 
@@ -56,8 +63,8 @@ class FeatureExtractor:
             vis_model = PCA(n_components=data.shape[1])
             vis_model.fit(data)
 
-            res = []
-            for i in range(vis_model.explained_variance_ratio_):
+            var, res = vis_model.explained_variance_ratio_, []
+            for i in range(len(var)):
                 res.append(np.sum(var[:i]))
 
             plt.ylabel("Cumulated explained variance ratio")

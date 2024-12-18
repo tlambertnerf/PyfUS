@@ -1,3 +1,9 @@
+"""
+@author: Théo Lambert
+
+This module regroups all the functions related to correlation analysis.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import typing
